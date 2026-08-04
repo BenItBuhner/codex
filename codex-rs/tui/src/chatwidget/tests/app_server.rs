@@ -501,6 +501,48 @@ async fn collab_spawn_end_shows_requested_model_and_effort() {
 }
 
 #[tokio::test]
+async fn sub_agent_activity_started_and_completed_renders_one_cell() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let agent_thread_id = ThreadId::new();
+    let item = AppServerThreadItem::SubAgentActivity {
+        id: "activity-1".to_string(),
+        kind: codex_app_server_protocol::SubAgentActivityKind::Started,
+        agent_thread_id: agent_thread_id.to_string(),
+        agent_path: "/root/reviewer".to_string(),
+    };
+
+    chat.handle_server_notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: item.clone(),
+        }),
+        /*replay_kind*/ None,
+    );
+    chat.handle_server_notification(
+        ServerNotification::ItemCompleted(ItemCompletedNotification {
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item,
+        }),
+        /*replay_kind*/ None,
+    );
+
+    let activity_cells = drain_insert_history(&mut rx)
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .filter(|text| text.contains("Started `/root/reviewer`"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        activity_cells.len(),
+        1,
+        "expected exactly one sub-agent activity cell, got {activity_cells:?}"
+    );
+}
+
+#[tokio::test]
 async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered_prompt() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
