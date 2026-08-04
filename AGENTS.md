@@ -320,3 +320,28 @@ Tests and features must support Linux, macOS and Windows unless feature is expli
 
 Codex supports running connected app-server and exec-server on different operating systems. See the
 `$remote-tests` skill for details about integration testing these configurations.
+
+## Cursor Cloud specific instructions
+
+The dev environment is already provisioned (Rust `1.95.0` toolchain, `just`, `cargo-nextest`,
+`cargo-insta`, `bubblewrap`, `pnpm`, and system build deps such as `libssl-dev`/`libcap-dev`/`musl-tools`).
+The startup update script only refreshes dependencies (`pnpm install --frozen-lockfile` and
+`cargo fetch` inside `codex-rs/`); it does not build. Standard build/lint/test/run commands live in
+`docs/install.md`, `justfile`, and `package.json` — use those rather than re-deriving them.
+
+Non-obvious caveats:
+
+- The primary dev flow is Cargo-based (`cargo build`/`just test`/`just clippy`). Bazel is only for
+  release builds and `just argument-comment-lint`; Bazel is NOT installed here, so skip Bazel-backed
+  targets and let CI cover them.
+- The pinned toolchain (`codex-rs/rust-toolchain.toml`, `1.95.0`) only applies when the working
+  directory is inside `codex-rs/`. Running `cargo` from the repo root falls back to an older default
+  toolchain and fails with `feature 'edition2024' is required`. Always run cargo from `codex-rs/`.
+- `just` must be >= 1.27 (the `justfile` uses `set working-directory`). The Ubuntu apt package is too
+  old; a current `just` is installed in the cargo bin dir.
+- `codex sandbox` and the Linux sandbox require `bwrap` (bubblewrap) on `PATH`; it is installed.
+- Running the agent end to end without OpenAI credentials: point a custom `model_provider` at a local
+  mock Responses server (`wire_api = "responses"`, any `env_key`), then
+  `codex exec --profile <name> --skip-git-repo-check "<prompt>"`. Note the profile layout in this
+  build: profile settings live in `$CODEX_HOME/<name>.config.toml`, and `[profiles.<name>]` inside
+  `config.toml` is rejected.
