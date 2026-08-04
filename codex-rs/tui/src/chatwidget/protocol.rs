@@ -351,7 +351,10 @@ impl ChatWidget {
                 reasoning_effort,
                 agents_states,
             }),
-            item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
+            // Core emits both started and completed notifications for the same
+            // sub-agent activity item; render only on completion so the
+            // transcript does not show duplicate cells.
+            ThreadItem::SubAgentActivity { .. } => {}
             ThreadItem::EnteredReviewMode { review, .. } if !from_replay => {
                 self.enter_review_mode_with_hint(review, /*from_replay*/ false);
             }
