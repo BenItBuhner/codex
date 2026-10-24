@@ -563,6 +563,10 @@ fn signing_key_from_private_key_pkcs8_base64(private_key_pkcs8_base64: &str) -> 
 }
 
 #[cfg(test)]
+#[path = "jwt_backend_compat_tests.rs"]
+mod jwt_backend_compat_tests;
+
+#[cfg(test)]
 mod tests {
     use base64::Engine as _;
     use ed25519_dalek::Signature;

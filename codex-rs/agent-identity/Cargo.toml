@@ -29,3 +29,6 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+# jsonwebtoken 9 verified RS256 with ring. 10 has no ring backend; aws-lc-rs
+# replaced it. Tests sign and verify with ring to keep that compatibility.
+ring = "0.17.14"
