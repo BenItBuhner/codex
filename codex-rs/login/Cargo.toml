@@ -43,6 +43,8 @@ webbrowser = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Same ring backend jsonwebtoken 9 used for RS256. See agent-identity's compat tests.
+ring = "0.17.14"
 core_test_support = { workspace = true }
 jsonwebtoken = { workspace = true }
 keyring = { workspace = true }

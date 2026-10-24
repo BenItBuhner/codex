@@ -66,6 +66,7 @@ combine-as-imports = true
 [tool.uv]
 exclude-newer = "7 days"
 exclude-newer-package = { openai-codex-cli-bin = "2026-07-15T01:00:00Z" }
+constraint-dependencies = ["black>=26.10.1"]
 index-strategy = "first-index"
 
 [tool.uv.pip]

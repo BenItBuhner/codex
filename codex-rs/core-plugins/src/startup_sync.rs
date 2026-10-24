@@ -1077,10 +1077,12 @@ fn extract_zipball_to_dir(bytes: &[u8], destination: &Path) -> Result<(), String
         let mut entry = archive
             .by_index(index)
             .map_err(|err| format!("failed to read curated plugins zip entry: {err}"))?;
+        let entry_name = entry
+            .name()
+            .map_err(|err| format!("failed to read curated plugins zip entry name: {err}"))?;
         let Some(relative_path) = entry.enclosed_name() else {
             return Err(format!(
-                "curated plugins zip entry `{}` escapes extraction root",
-                entry.name()
+                "curated plugins zip entry `{entry_name}` escapes extraction root"
             ));
         };
 
@@ -1137,12 +1139,18 @@ fn extract_zipball_to_dir(bytes: &[u8], destination: &Path) -> Result<(), String
 }
 
 #[cfg(unix)]
-fn apply_zip_permissions(entry: &zip::read::ZipFile<'_>, output_path: &Path) -> Result<(), String> {
+fn apply_zip_permissions(
+    entry: &zip::read::ZipFile<'_, impl std::io::Read>,
+    output_path: &Path,
+) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
 
     let Some(mode) = entry.unix_mode() else {
         return Ok(());
     };
+    // Drop setuid, setgid, and sticky bits. zip's own extract() path fixed this
+    // in 9.0.0 (GHSA-vv5m-jxxh-4627); this extractor applies modes itself.
+    let mode = mode & 0o0777;
     std::fs::set_permissions(output_path, std::fs::Permissions::from_mode(mode)).map_err(|err| {
         format!(
             "failed to set permissions on curated plugins file {}: {err}",
@@ -1153,7 +1161,7 @@ fn apply_zip_permissions(entry: &zip::read::ZipFile<'_>, output_path: &Path) -> 
 
 #[cfg(not(unix))]
 fn apply_zip_permissions(
-    _entry: &zip::read::ZipFile<'_>,
+    _entry: &zip::read::ZipFile<'_, impl std::io::Read>,
     _output_path: &Path,
 ) -> Result<(), String> {
     Ok(())

@@ -348,8 +348,16 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use codex_agent_identity::generate_agent_key_material;
     use pretty_assertions::assert_eq;
+    use ring::rand::SystemRandom;
+    use ring::signature::RSA_PKCS1_2048_8192_SHA256;
+    use ring::signature::RSA_PKCS1_SHA256;
+    use ring::signature::RsaKeyPair;
+    use ring::signature::UnparsedPublicKey;
     use serde_json::json;
     use wiremock::Mock;
     use wiremock::MockServer;
@@ -446,6 +454,40 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn from_jwt_accepts_rs256_token_signed_with_ring() -> anyhow::Result<()> {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/backend-api/wham/agent-identities/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(test_jwks_body()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/agent/agent-runtime-1/task/register"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "task_id": "task-run-1",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let record = agent_identity_record_with_generated_key();
+        let jwt = signed_agent_identity_jwt_with_ring(&record);
+        verify_rs256_with_ring(&signed_agent_identity_jwt(&record)?);
+        let auth = AgentIdentityAuth::from_jwt(
+            &jwt,
+            &format!("{}/backend-api", server.uri()),
+            &server.uri(),
+            &crate::test_support::transport_default_auth_route_config(),
+        )
+        .await?;
+
+        assert_eq!(auth.record().agent_runtime_id, "agent-runtime-1");
+        assert_eq!(auth.run_task_id(), "task-run-1");
+        Ok(())
+    }
+
     #[test]
     fn run_task_is_shared_across_clones() {
         let auth = AgentIdentityAuth::from_initialized_record(
@@ -511,6 +553,73 @@ mod tests {
             }),
             &jsonwebtoken::EncodingKey::from_rsa_pem(TEST_AGENT_IDENTITY_RSA_PRIVATE_KEY_PEM)?,
         )
+    }
+
+    fn signed_agent_identity_jwt_with_ring(record: &AgentIdentityAuthRecord) -> String {
+        let header = serde_json::to_vec(&json!({
+            "alg": "RS256",
+            "kid": "test-key",
+            "typ": "JWT",
+        }))
+        .expect("header should serialize");
+        let payload = serde_json::to_vec(&json!({
+            "iss": "https://chatgpt.com/codex-backend/agent-identity",
+            "aud": "codex-app-server",
+            "iat": 1_700_000_000usize,
+            "exp": 4_000_000_000usize,
+            "agent_runtime_id": record.agent_runtime_id,
+            "agent_private_key": record.agent_private_key,
+            "account_id": record.account_id,
+            "chatgpt_user_id": record.chatgpt_user_id,
+            "email": record.email,
+            "plan_type": record.plan_type,
+            "chatgpt_account_is_fedramp": record.chatgpt_account_is_fedramp,
+        }))
+        .expect("payload should serialize");
+        let signing_input = format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(header),
+            URL_SAFE_NO_PAD.encode(payload)
+        );
+        let key_pair = test_ring_rsa_key_pair();
+        let mut signature = vec![0u8; key_pair.public().modulus_len()];
+        key_pair
+            .sign(
+                &RSA_PKCS1_SHA256,
+                &SystemRandom::new(),
+                signing_input.as_bytes(),
+                &mut signature,
+            )
+            .expect("ring should sign RS256");
+        format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(signature))
+    }
+
+    fn verify_rs256_with_ring(jwt: &str) {
+        let (signing_input, signature) = jwt
+            .rsplit_once('.')
+            .expect("JWT should have a signature segment");
+        let signature = URL_SAFE_NO_PAD
+            .decode(signature)
+            .expect("signature should be base64url");
+        let key_pair = test_ring_rsa_key_pair();
+        let public_key =
+            UnparsedPublicKey::new(&RSA_PKCS1_2048_8192_SHA256, key_pair.public().as_ref());
+        public_key
+            .verify(signing_input.as_bytes(), &signature)
+            .expect("ring should verify aws-lc RS256 signature");
+    }
+
+    fn test_ring_rsa_key_pair() -> RsaKeyPair {
+        let pem = std::str::from_utf8(TEST_AGENT_IDENTITY_RSA_PRIVATE_KEY_PEM)
+            .expect("PEM should be utf-8");
+        let der = BASE64_STANDARD
+            .decode(
+                pem.lines()
+                    .filter(|line| !line.starts_with("-----"))
+                    .collect::<String>(),
+            )
+            .expect("PEM body should be base64");
+        RsaKeyPair::from_pkcs8(&der).expect("test RSA key should parse")
     }
 
     fn test_jwks_body() -> serde_json::Value {

@@ -12,7 +12,14 @@ fn main() {
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_default());
     let vendor_dir = manifest_dir.join("../vendor/bubblewrap");
-    for source in ["bubblewrap.c", "bind-mount.c", "network.c", "utils.c"] {
+    for source in [
+        "bubblewrap.c",
+        "bind-mount.c",
+        "network.c",
+        "utils.c",
+        "chroot_realpath.c",
+        "safe_openat.c",
+    ] {
         println!(
             "cargo:rerun-if-changed={}",
             vendor_dir.join(source).display()
@@ -54,6 +61,8 @@ fn try_build_bwrap() -> Result<(), String> {
         .file(src_dir.join("bind-mount.c"))
         .file(src_dir.join("network.c"))
         .file(src_dir.join("utils.c"))
+        .file(src_dir.join("chroot_realpath.c"))
+        .file(src_dir.join("safe_openat.c"))
         .include(&out_dir)
         .include(&src_dir)
         .define("_GNU_SOURCE", None)
