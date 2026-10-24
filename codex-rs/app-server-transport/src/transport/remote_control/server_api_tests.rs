@@ -3,6 +3,7 @@ use crate::transport::remote_control::protocol::normalize_remote_control_url;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::time::SystemTime;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -42,6 +43,30 @@ async fn timed_out_request(partial_response: Option<&'static [u8]>) -> io::Error
     let (request_done_tx, request_done_rx) = oneshot::channel();
     let server_task = tokio::spawn(async move {
         let (mut stream, _) = listener.accept().await.expect("request should connect");
+        // Read the request before responding. Newer Tokio scheduling can deliver
+        // the response before hyper has sent the request, which surfaces as
+        // UnexpectedMessage instead of a body timeout.
+        let mut buf = [0u8; 4096];
+        let mut received = 0usize;
+        loop {
+            let n = stream
+                .read(&mut buf[received..])
+                .await
+                .expect("request should read");
+            if n == 0 {
+                break;
+            }
+            received += n;
+            if buf[..received]
+                .windows(4)
+                .any(|window| window == b"\r\n\r\n")
+            {
+                break;
+            }
+            if received == buf.len() {
+                break;
+            }
+        }
         if let Some(partial_response) = partial_response {
             stream
                 .write_all(partial_response)

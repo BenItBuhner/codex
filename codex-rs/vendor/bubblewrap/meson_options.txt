@@ -42,18 +42,6 @@ option(
   description : 'Path to Python 3, or empty to use python3',
 )
 option(
-  'support_setuid',
-  type : 'boolean',
-  description : 'Support setuid mode (deprecated)',
-  value : false,
-)
-option(
-  'require_userns',
-  type : 'boolean',
-  description : 'require user namespaces by default when installed setuid',
-  value : false,
-)
-option(
   'selinux',
   type : 'feature',
   description : 'enable optional SELINUX support',
@@ -64,6 +52,12 @@ option(
   type : 'boolean',
   description : 'build tests',
   value : true,
+)
+option(
+  'assume_kernel',
+  type : 'string',
+  description : 'Assume at least this kernel version (e.g. 6.1.0). Compile out fallback code for older kernels.',
+  value : '',
 )
 option(
   'zsh_completion',
